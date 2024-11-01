@@ -1,54 +1,54 @@
 package io.github.coolcrabs.augmentedautojump;
 
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.World;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.util.Mth;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 public class AugmentedAutojump {
     private static final double PREDICTION_MULT = 6;
 
     private AugmentedAutojump() { }
 
-    public static boolean autojumpPlayer(ClientPlayerEntity player, float dx, float dz) {
-        if (!player.input.hasForwardMovement()) return false;
+    public static boolean autojumpPlayer(LocalPlayer player, float dx, float dz) {
+        if (!player.input.hasForwardImpulse()) return false;
         float jumpHeight = 1.2F;
-        if (player.hasStatusEffect(StatusEffects.JUMP_BOOST)) {
-            jumpHeight += (float)(player.getStatusEffect(StatusEffects.JUMP_BOOST).getAmplifier() + 1) * 0.75F;
+        if (player.hasEffect(MobEffects.JUMP)) {
+            jumpHeight += (float)(player.getEffect(MobEffects.JUMP).getAmplifier() + 1) * 0.75F;
         }
-        World world = player.getEntityWorld();
-        double bpt = MathHelper.clamp(Math.sqrt((dx * dx) + (dz * dz)), 0.001, 0.8); // Current speed in blocks per tick; Clamped to reasonable values for aproximating next location
+        Level world = player.getCommandSenderWorld();
+        double bpt = Mth.clamp(Math.sqrt((dx * dx) + (dz * dz)), 0.001, 0.8); // Current speed in blocks per tick; Clamped to reasonable values for aproximating next location
         if (bpt < 0.2) bpt *= 0.7; // Fixes ice + iron bar edge case
-        Box currentBox = player.getBoundingBox();
-        float yawRad = -player.getYaw(0) * (float)(Math.PI / 180);
-        double yawDeltaX = MathHelper.sin(yawRad);
-        double yawDeltaZ = MathHelper.cos(yawRad);
+        AABB currentBox = player.getBoundingBox();
+        float yawRad = -player.getViewYRot(0) * (float)(Math.PI / 180);
+        double yawDeltaX = Mth.sin(yawRad);
+        double yawDeltaZ = Mth.cos(yawRad);
         double predictionX = yawDeltaX * bpt * PREDICTION_MULT;
         double predictionZ = yawDeltaZ * bpt * PREDICTION_MULT;
-        Box predictionBox = currentBox.offset(predictionX, 0, predictionZ);
-        int minX = MathHelper.floor(predictionBox.minX);
-        int minY = MathHelper.floor(predictionBox.minY);
-        int minZ = MathHelper.floor(predictionBox.minZ);
-        int maxX = MathHelper.floor(predictionBox.maxX);
-        int maxY = MathHelper.floor(predictionBox.maxY);
-        int maxZ = MathHelper.floor(predictionBox.maxZ);
+        AABB predictionBox = currentBox.move(predictionX, 0, predictionZ);
+        int minX = Mth.floor(predictionBox.minX);
+        int minY = Mth.floor(predictionBox.minY);
+        int minZ = Mth.floor(predictionBox.minZ);
+        int maxX = Mth.floor(predictionBox.maxX);
+        int maxY = Mth.floor(predictionBox.maxY);
+        int maxZ = Mth.floor(predictionBox.maxZ);
 
-        BlockPos.Mutable pos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
         for (int i = minX; i <= maxX; i++) {
             for (int j = minY; j <= maxY; j++) {
                 for (int k = minZ; k <= maxZ; k++) {
                     pos.set(i, j, k);
-                    VoxelShape jumpTargetShape = world.getBlockState(pos).getCollisionShape(world, pos).offset(i, j, k);
+                    VoxelShape jumpTargetShape = world.getBlockState(pos).getCollisionShape(world, pos).move(i, j, k);
                     if (jumpTargetShape.isEmpty()) continue;
                     double playerAngle = mcDeg2NormalDeg((yawRad * (-180 / Math.PI)));
                     double ydiff = getCollisionY(angleToDirection(playerAngle).getOpposite(), jumpTargetShape) - player.getY();
-                    if (ydiff > player.stepHeight + 0.001 && ydiff < jumpHeight) {
+                    if (ydiff > player.maxUpStep + 0.001 && ydiff < jumpHeight) {
                         double playerToBlockAngle = calcAngle(player.getX(), player.getZ(), i + 0.5, k + 0.5);
                         if (!hasHeadSpace(player, currentBox, jumpHeight, pos)) continue;
                         if (Math.abs(angleDiff(playerToBlockAngle, playerAngle)) < 10 || Math.floorMod((int)playerAngle, 90) < 10 || Math.floorMod((int)playerAngle, 90) > 80) {
@@ -61,22 +61,22 @@ public class AugmentedAutojump {
         return false;
     }
 
-    public static boolean hasHeadSpace(ClientPlayerEntity player, Box playerBox, float jumpHeight, BlockPos target) {
-        int minX = MathHelper.floor(Math.min(playerBox.minX, target.getX()));
-        int minY = MathHelper.floor(player.getY() + jumpHeight);
-        int minZ = MathHelper.floor(Math.min(playerBox.minZ, target.getZ()));
-        int maxX = MathHelper.floor(Math.max(playerBox.maxX, target.getX()));
-        int maxY = MathHelper.floor(player.getY() + playerBox.getYLength() + jumpHeight);
-        int maxZ = MathHelper.floor(Math.max(playerBox.maxZ, target.getZ()));
+    public static boolean hasHeadSpace(LocalPlayer player, AABB playerBox, float jumpHeight, BlockPos target) {
+        int minX = Mth.floor(Math.min(playerBox.minX, target.getX()));
+        int minY = Mth.floor(player.getY() + jumpHeight);
+        int minZ = Mth.floor(Math.min(playerBox.minZ, target.getZ()));
+        int maxX = Mth.floor(Math.max(playerBox.maxX, target.getX()));
+        int maxY = Mth.floor(player.getY() + playerBox.getYsize() + jumpHeight);
+        int maxZ = Mth.floor(Math.max(playerBox.maxZ, target.getZ()));
 
-        BlockPos.Mutable pos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
         for (int i = minX; i <= maxX; i++) {
             for (int j = minY; j <= maxY; j++) {
                 for (int k = minZ; k <= maxZ; k++) {
                     pos.set(i, j, k);
-                    VoxelShape blockingShape = player.getEntityWorld().getBlockState(pos).getCollisionShape(player.getEntityWorld(), pos).offset(i, j, k);
-                    if (blockingShape.getMin(Axis.Y) - player.getY() < jumpHeight + 1.7) return false;
+                    VoxelShape blockingShape = player.getCommandSenderWorld().getBlockState(pos).getCollisionShape(player.getCommandSenderWorld(), pos).move(i, j, k);
+                    if (blockingShape.min(Axis.Y) - player.getY() < jumpHeight + 1.7) return false;
                 }
             }
         }
@@ -85,19 +85,19 @@ public class AugmentedAutojump {
     }
 
     public static double getCollisionY(Direction side, VoxelShape shape) {
-        boolean positiveDirection = side.getOffsetX() + side.getOffsetZ() > 0;
+        boolean positiveDirection = side.getStepX() + side.getStepZ() > 0;
         double maxDir = Double.NaN;
         double maxY = Double.NaN;
-        for (Box box : shape.getBoundingBoxes()) {
+        for (AABB box : shape.toAabbs()) {
             if (box.maxY > maxY || Double.isNaN(maxDir)) {
                 if (positiveDirection) {
-                    if (Double.isNaN(maxDir) || box.getMax(side.getAxis()) >= maxDir) {
-                        maxDir = box.getMax(side.getAxis());
+                    if (Double.isNaN(maxDir) || box.max(side.getAxis()) >= maxDir) {
+                        maxDir = box.max(side.getAxis());
                         maxY = box.maxY;
                     }
                 } else {
-                    if (Double.isNaN(maxDir) || box.getMin(side.getAxis()) <= maxDir) {
-                        maxDir = box.getMin(side.getAxis());
+                    if (Double.isNaN(maxDir) || box.min(side.getAxis()) <= maxDir) {
+                        maxDir = box.min(side.getAxis());
                         maxY = box.maxY;
                     }
                 }
@@ -128,7 +128,7 @@ public class AugmentedAutojump {
     }
 
     public static double calcAngle(double x, double y, double x1, double y1) {
-        return MathHelper.atan2(x - x1, y1 - y) * 180 / Math.PI + 180;
+        return Mth.atan2(x - x1, y1 - y) * 180 / Math.PI + 180;
     }
 
     /**

@@ -5,18 +5,18 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 
 import io.github.coolcrabs.augmentedautojump.AugmentedAutojump;
-import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.player.LocalPlayer;
 
-@Mixin(ClientPlayerEntity.class)
+@Mixin(LocalPlayer.class)
 public abstract class ClientPlayerEntityMixin {
     @Shadow
-    private int ticksToNextAutojump;
+    private int autoJumpTime;
 
     @Shadow
-    abstract boolean shouldAutoJump();
+    protected abstract boolean canAutoJump();
 
     @Overwrite
-    public void autoJump(float dx, float dz) {
-        if (shouldAutoJump()) ticksToNextAutojump = AugmentedAutojump.autojumpPlayer((ClientPlayerEntity)(Object)this, dx, dz) ? 1 : 0;
+    public void updateAutoJump(float dx, float dz) {
+        if (canAutoJump()) autoJumpTime = AugmentedAutojump.autojumpPlayer((LocalPlayer)(Object)this, dx, dz) ? 1 : 0;
     }
 }
